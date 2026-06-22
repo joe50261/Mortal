@@ -141,9 +141,11 @@ _IMG_MIME = {'.gif': 'image/gif', '.png': 'image/png', '.jpg': 'image/jpeg', '.j
 # ---------------------------------------------------------------------------
 ANALYSIS_CSS = '''
 <style>
-#analysis{position:fixed;top:8px;right:8px;width:248px;max-height:96vh;overflow:auto;
+/* Appended to <html> (not <body>) so the page's `transform: scale()` on
+   <body> does not scale or reposition this fixed overlay. */
+#analysis{position:fixed;top:8px;right:8px;width:260px;max-height:96vh;overflow:auto;
   background:#1e1f24;color:#e8e8ea;font:12px/1.4 system-ui,sans-serif;border-radius:8px;
-  box-shadow:0 2px 12px rgba(0,0,0,.45);padding:10px;z-index:9999}
+  box-shadow:0 2px 12px rgba(0,0,0,.45);padding:10px;z-index:2147483647}
 #analysis h3{margin:0 0 2px;font-size:13px;font-weight:600}
 #analysis .an-sub{color:#9aa0aa;font-size:11px;margin-bottom:8px}
 #analysis .an-row{position:relative;display:flex;align-items:center;gap:6px;padding:3px 5px;
@@ -188,7 +190,10 @@ ANALYSIS_JS = '''
     if(idx==44)return t==='ryukyoku';
     return false;}
   function panel(){var el=document.getElementById('analysis');
-    if(!el){el=document.createElement('div');el.id='analysis';document.body.appendChild(el);}return el;}
+    if(!el){el=document.createElement('div');el.id='analysis';
+      // attach to <html>, outside the scaled <body>, so position:fixed is
+      // relative to the viewport and the panel is not scaled.
+      document.documentElement.appendChild(el);}return el;}
   function curDecision(a){
     if(a&&a.meta&&a.meta.q_values)return a;
     try{var acts=kyokus[currentKyokuId].actions;
