@@ -134,6 +134,102 @@ def recalculate(engine, events):
 _IMG_MIME = {'.gif': 'image/gif', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg'}
 
 
+# ---------------------------------------------------------------------------
+# Optional analysis overlay: render the recomputed q_values as a panel showing,
+# for the current action, every candidate (tile / call) with its Q value and
+# softmax probability, marking the model's best (star) and the actual move.
+# ---------------------------------------------------------------------------
+ANALYSIS_CSS = '''
+<style>
+#analysis{position:fixed;top:8px;right:8px;width:248px;max-height:96vh;overflow:auto;
+  background:#1e1f24;color:#e8e8ea;font:12px/1.4 system-ui,sans-serif;border-radius:8px;
+  box-shadow:0 2px 12px rgba(0,0,0,.45);padding:10px;z-index:9999}
+#analysis h3{margin:0 0 2px;font-size:13px;font-weight:600}
+#analysis .an-sub{color:#9aa0aa;font-size:11px;margin-bottom:8px}
+#analysis .an-row{position:relative;display:flex;align-items:center;gap:6px;padding:3px 5px;
+  border-radius:4px;margin-bottom:2px;background:#26272d;overflow:hidden}
+#analysis .an-bar{position:absolute;left:0;top:0;bottom:0;background:rgba(90,150,220,.22);z-index:0}
+#analysis .an-row>*{position:relative;z-index:1}
+#analysis .an-row.best .an-bar{background:rgba(80,200,130,.38)}
+#analysis .an-row.chosen{outline:2px solid #4a90d9;outline-offset:-2px}
+#analysis .an-mark{width:14px;text-align:center;font-size:12px}
+#analysis .an-pai{height:24px;width:auto;display:block}
+#analysis .an-act{display:inline-block;min-width:22px;height:22px;line-height:22px;text-align:center;
+  background:#3a3c44;border-radius:3px;padding:0 7px;font-weight:600}
+#analysis .an-q{margin-left:auto;font-variant-numeric:tabular-nums;color:#dfe3ea}
+#analysis .an-pi{font-variant-numeric:tabular-nums;color:#9aa0aa;min-width:38px;text-align:right}
+#analysis .an-empty{color:#9aa0aa;padding:6px 2px}
+#analysis .an-legend{margin-top:8px;color:#9aa0aa;font-size:11px}
+</style>
+'''
+
+ANALYSIS_JS = '''
+<script>
+(function(){
+  var ACT={37:'立直',38:'吃',39:'吃',40:'吃',41:'碰',42:'槓',43:'和了',44:'流局',45:'pass'};
+  function label(i){
+    if(i<=8)return (i+1)+'m';
+    if(i<=17)return (i-8)+'p';
+    if(i<=26)return (i-17)+'s';
+    if(i<=33)return ['E','S','W','N','P','F','C'][i-27];
+    if(i==34)return '5mr'; if(i==35)return '5pr'; if(i==36)return '5sr';
+    return ACT[i]||('#'+i);
+  }
+  function masked(mask){var r=[];for(var i=0;i<46;i++){if(Math.floor(mask/Math.pow(2,i))%2===1)r.push(i);}return r;}
+  function softmax(qs){var m=Math.max.apply(null,qs);var e=qs.map(function(q){return Math.exp(q-m);});
+    var s=e.reduce(function(a,b){return a+b;},0);return e.map(function(x){return x/s;});}
+  function chosen(idx,a){var t=a.type;
+    if(idx<=36)return !!(a.pai&&label(idx)===a.pai);
+    if(idx==37)return t==='reach';
+    if(idx>=38&&idx<=40)return t==='chi';
+    if(idx==41)return t==='pon';
+    if(idx==42)return t==='ankan'||t==='kakan'||t==='daiminkan'||t==='kan';
+    if(idx==43)return t==='hora';
+    if(idx==44)return t==='ryukyoku';
+    return false;}
+  function panel(){var el=document.getElementById('analysis');
+    if(!el){el=document.createElement('div');el.id='analysis';document.body.appendChild(el);}return el;}
+  function render(a){
+    var el=panel();var m=a&&a.meta;
+    if(!m||!m.q_values){el.innerHTML='<h3>Mortal 分析</h3><div class="an-empty">（此手無分析資料）</div>';return;}
+    var idx=masked(m.mask_bits),qs=m.q_values,pis=softmax(qs);
+    var ord=qs.map(function(q,k){return k;}).sort(function(x,y){return qs[y]-qs[x];});
+    var best=ord[0];
+    var sub='actor '+a.actor+' ・ '+a.type;
+    if(m.shanten!=null&&m.shanten>=0)sub+=' ・ 向聽 '+m.shanten;
+    if(m.at_furiten)sub+=' ・ 振聴';
+    var h='<h3>Mortal 分析</h3><div class="an-sub">'+sub+'</div>';
+    ord.forEach(function(k){
+      var i=idx[k],lab=label(i),q=qs[k],pi=pis[k];
+      var isBest=(k===best),isCho=chosen(i,a);
+      var cell=(i<=36)?'<img class="an-pai" src="'+paiToImageUrl(lab)+'">':'<span class="an-act">'+lab+'</span>';
+      var mark=(isBest?'★':'')+(isCho?'◉':'');
+      h+='<div class="an-row'+(isBest?' best':'')+(isCho?' chosen':'')+'">'+
+         '<span class="an-bar" style="width:'+(pi*100).toFixed(1)+'%"></span>'+
+         '<span class="an-mark">'+mark+'</span>'+cell+
+         '<span class="an-q">'+(q>=0?'+':'')+q.toFixed(2)+'</span>'+
+         '<span class="an-pi">'+(pi*100).toFixed(1)+'%</span></div>';
+    });
+    h+='<div class="an-legend">★ 模型最佳・◉ 實際選擇・Q=價值・%=softmax 機率</div>';
+    el.innerHTML=h;
+  }
+  function hook(){
+    if(typeof renderAction!=='function'){return setTimeout(hook,30);}
+    var orig=renderAction;
+    renderAction=function(a){orig(a);try{render(a);}catch(e){}};
+  }
+  hook();
+})();
+</script>
+'''
+
+
+def inject_analysis(html):
+    html = html.replace('</head>', ANALYSIS_CSS + '</head>', 1)
+    html = html.replace('</body>', ANALYSIS_JS + '</body>', 1)
+    return html
+
+
 def inline_assets(html, base_dir):
     '''Inline CSS, JS and tile images so the page is a single self-contained file.'''
     # Inline the stylesheet.
@@ -170,7 +266,7 @@ def inline_assets(html, base_dir):
     return html.replace('</head>', patch + '</head>', 1)
 
 
-def render_html(events, template_path, output_path, standalone=False):
+def render_html(events, template_path, output_path, standalone=False, analysis=False):
     '''Inject the annotated log into a copy of the viewer template.'''
     with open(template_path, encoding='utf-8') as f:
         template = f.read()
@@ -183,6 +279,8 @@ def render_html(events, template_path, output_path, standalone=False):
         raise RuntimeError('could not locate the allActions template literal')
     html = pattern.sub(lambda m: m.group(1) + '\n' + body + '\n' + m.group(3), template, count=1)
 
+    if analysis:
+        html = inject_analysis(html)
     if standalone:
         html = inline_assets(html, os.path.dirname(os.path.abspath(template_path)))
 
@@ -202,6 +300,8 @@ def main():
     parser.add_argument('--device', default='cpu', help='torch device (default: cpu)')
     parser.add_argument('--standalone', action='store_true',
                         help='inline CSS/JS/images into a single self-contained HTML file')
+    parser.add_argument('--analysis', action='store_true',
+                        help='overlay a panel showing recomputed q_values per candidate action')
     parser.add_argument('--quiet', action='store_true', help='suppress progress output')
     args = parser.parse_args()
 
@@ -213,7 +313,7 @@ def main():
     events = recalculate(engine, events)
     elapsed = time.perf_counter() - start
 
-    render_html(events, args.template, args.output, standalone=args.standalone)
+    render_html(events, args.template, args.output, standalone=args.standalone, analysis=args.analysis)
     if not args.quiet:
         annotated = sum(1 for e in events if 'meta' in e)
         print(f'recalculated {annotated} decisions over {len(events)} events '
