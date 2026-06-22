@@ -178,6 +178,7 @@ ANALYSIS_JS = '''
     return ACT[i]||('#'+i);
   }
   function masked(mask){var r=[];for(var i=0;i<46;i++){if(Math.floor(mask/Math.pow(2,i))%2===1)r.push(i);}return r;}
+  function pad(s,n){s=''+s;while(s.length<n)s+=' ';return s;}
   function softmax(qs){var m=Math.max.apply(null,qs);var e=qs.map(function(q){return Math.exp(q-m);});
     var s=e.reduce(function(a,b){return a+b;},0);return e.map(function(x){return x/s;});}
   function chosen(idx,a){var t=a.type;
@@ -223,6 +224,16 @@ ANALYSIS_JS = '''
     });
     h+='<div class="an-legend">★ 模型最佳・◉ 實際選擇・Q=價值・%=softmax 機率</div>';
     el.innerHTML=h;
+    // Redundant in-flow mirror: write the same analysis as text into #log-label,
+    // which lives in the visible controller column and does not depend on the
+    // fixed overlay (robust against the page's body transform: scale).
+    try{var ll=document.getElementById('log-label');
+      if(ll){var t='【Mortal 分析】 '+sub+'\\n';
+        ord.forEach(function(k){var i=idx[k];
+          t+=((k===best)?'★':' ')+(chosen(i,d)?'◉':' ')+' '+pad(label(i),7)+
+             pad((qs[k]>=0?'+':'')+qs[k].toFixed(2),8)+(pis[k]*100).toFixed(1)+'%\\n';});
+        ll.textContent=t;}
+    }catch(e){}
   }
   function install(){
     if(typeof renderAction!=='function'||typeof jQuery==='undefined'){return setTimeout(install,30);}
