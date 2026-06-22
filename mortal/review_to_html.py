@@ -189,19 +189,25 @@ ANALYSIS_JS = '''
     return false;}
   function panel(){var el=document.getElementById('analysis');
     if(!el){el=document.createElement('div');el.id='analysis';document.body.appendChild(el);}return el;}
+  function curDecision(a){
+    if(a&&a.meta&&a.meta.q_values)return a;
+    try{var acts=kyokus[currentKyokuId].actions;
+      for(var i=currentActionId;i>=0;i--){if(acts[i].meta&&acts[i].meta.q_values)return acts[i];}}catch(e){}
+    return null;}
   function render(a){
-    var el=panel();var m=a&&a.meta;
-    if(!m||!m.q_values){el.innerHTML='<h3>Mortal 分析</h3><div class="an-empty">（此手無分析資料）</div>';return;}
+    var el=panel();var d=curDecision(a);
+    if(!d){el.innerHTML='<h3>Mortal 分析</h3><div class="an-empty">按 Next ▶ 到出牌或鳴牌的手即可看到分析</div>';return;}
+    var m=d.meta;
     var idx=masked(m.mask_bits),qs=m.q_values,pis=softmax(qs);
     var ord=qs.map(function(q,k){return k;}).sort(function(x,y){return qs[y]-qs[x];});
     var best=ord[0];
-    var sub='actor '+a.actor+' ・ '+a.type;
+    var sub='actor '+d.actor+' ・ '+d.type;
     if(m.shanten!=null&&m.shanten>=0)sub+=' ・ 向聽 '+m.shanten;
     if(m.at_furiten)sub+=' ・ 振聴';
     var h='<h3>Mortal 分析</h3><div class="an-sub">'+sub+'</div>';
     ord.forEach(function(k){
       var i=idx[k],lab=label(i),q=qs[k],pi=pis[k];
-      var isBest=(k===best),isCho=chosen(i,a);
+      var isBest=(k===best),isCho=chosen(i,d);
       var cell=(i<=36)?'<img class="an-pai" src="'+paiToImageUrl(lab)+'">':'<span class="an-act">'+lab+'</span>';
       var mark=(isBest?'★':'')+(isCho?'◉':'');
       h+='<div class="an-row'+(isBest?' best':'')+(isCho?' chosen':'')+'">'+
@@ -213,12 +219,17 @@ ANALYSIS_JS = '''
     h+='<div class="an-legend">★ 模型最佳・◉ 實際選擇・Q=價值・%=softmax 機率</div>';
     el.innerHTML=h;
   }
-  function hook(){
-    if(typeof renderAction!=='function'){return setTimeout(hook,30);}
+  function install(){
+    if(typeof renderAction!=='function'||typeof jQuery==='undefined'){return setTimeout(install,30);}
     var orig=renderAction;
     renderAction=function(a){orig(a);try{render(a);}catch(e){}};
+    jQuery(function(){try{
+      var acts=kyokus[currentKyokuId].actions;
+      var i=acts.findIndex(function(x){return x.meta&&x.meta.q_values;});
+      if(i>=0){currentActionId=i;var lbl=document.getElementById('action-id-label');if(lbl)lbl.value=i;renderCurrentAction();}
+    }catch(e){}});
   }
-  hook();
+  install();
 })();
 </script>
 '''
