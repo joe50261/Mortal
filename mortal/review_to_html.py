@@ -240,6 +240,17 @@ ANALYSIS_JS = '''
     if(typeof renderAction!=='function'||typeof jQuery==='undefined'){return setTimeout(install,30);}
     var orig=renderAction;
     renderAction=function(a){orig(a);try{render(a);}catch(e){}};
+    // The viewer binds "mousewheel" via jQuery, which Chrome treats as a
+    // passive listener, so its preventDefault() is ignored (logging an
+    // [Intervention] warning and letting the page scroll). Replace it with a
+    // non-passive "wheel" listener so wheel navigation works quietly.
+    try{jQuery(window).off('mousewheel');
+      window.addEventListener('wheel', function(e){
+        if(typeof goNext!=='function')return;
+        if(e.deltaY>0)goNext(); else if(e.deltaY<0)goBack();
+        e.preventDefault();
+      }, {passive:false});
+    }catch(e){}
     jQuery(function(){try{
       var acts=kyokus[currentKyokuId].actions;
       var i=acts.findIndex(function(x){return x.meta&&x.meta.q_values;});
