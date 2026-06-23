@@ -141,120 +141,110 @@ _IMG_MIME = {'.gif': 'image/gif', '.png': 'image/png', '.jpg': 'image/jpeg', '.j
 # ---------------------------------------------------------------------------
 ANALYSIS_CSS = '''
 <style>
-/* Appended to <html> (not <body>) so the page's `transform: scale()` on
-   <body> does not scale or reposition this fixed overlay. */
-#analysis{position:fixed;top:8px;right:8px;width:260px;max-height:96vh;overflow:auto;
-  background:#1e1f24;color:#e8e8ea;font:12px/1.4 system-ui,sans-serif;border-radius:8px;
-  box-shadow:0 2px 12px rgba(0,0,0,.45);padding:10px;z-index:2147483647}
-#analysis h3{margin:0 0 2px;font-size:13px;font-weight:600}
-#analysis .an-sub{color:#9aa0aa;font-size:11px;margin-bottom:8px}
-#analysis .an-row{position:relative;display:flex;align-items:center;gap:6px;padding:3px 5px;
-  border-radius:4px;margin-bottom:2px;background:#26272d;overflow:hidden}
-#analysis .an-bar{position:absolute;left:0;top:0;bottom:0;background:rgba(90,150,220,.22);z-index:0}
-#analysis .an-row>*{position:relative;z-index:1}
-#analysis .an-row.best .an-bar{background:rgba(80,200,130,.38)}
-#analysis .an-row.chosen{outline:2px solid #4a90d9;outline-offset:-2px}
-#analysis .an-mark{width:14px;text-align:center;font-size:12px}
-#analysis .an-pai{height:24px;width:auto;display:block}
-#analysis .an-act{display:inline-block;min-width:22px;height:22px;line-height:22px;text-align:center;
-  background:#3a3c44;border-radius:3px;padding:0 7px;font-weight:600}
-#analysis .an-q{margin-left:auto;font-variant-numeric:tabular-nums;color:#dfe3ea}
-#analysis .an-pi{font-variant-numeric:tabular-nums;color:#9aa0aa;min-width:38px;text-align:right}
-#analysis .an-empty{color:#9aa0aa;padding:6px 2px}
-#analysis .an-legend{margin-top:8px;color:#9aa0aa;font-size:11px}
+/* Per-tile analysis overlay drawn on top of the board. Positioned in document
+   space (absolute + scroll offset) so labels track tiles when scrolling. */
+#mortal-overlay{position:absolute;left:0;top:0;pointer-events:none;z-index:2147483647}
+#mortal-overlay .tl{position:absolute;transform:translateX(-50%);white-space:nowrap;
+  font:700 12px/1.1 system-ui,sans-serif;padding:1px 4px;border-radius:4px;
+  background:rgba(18,19,24,.86);color:#fff;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.5)}
+#mortal-overlay .tl .p{display:block;font-weight:400;font-size:10px;color:#bcd}
+#mortal-overlay .tl.best{background:#2f9e54}
+#mortal-overlay .tl.cho{outline:2px solid #5aa0ff;outline-offset:1px}
+#mortal-legend{position:fixed;left:8px;top:8px;z-index:2147483647;pointer-events:none;
+  font:12px/1.5 system-ui,sans-serif;background:rgba(18,19,24,.82);color:#eee;
+  padding:6px 9px;border-radius:6px;max-width:60vw}
+#mortal-legend b{color:#fff}
 </style>
 '''
 
 ANALYSIS_JS = '''
 <script>
 (function(){
-  var ACT={37:'立直',38:'吃',39:'吃',40:'吃',41:'碰',42:'槓',43:'和了',44:'流局',45:'pass'};
-  function label(i){
-    if(i<=8)return (i+1)+'m';
-    if(i<=17)return (i-8)+'p';
-    if(i<=26)return (i-17)+'s';
-    if(i<=33)return ['E','S','W','N','P','F','C'][i-27];
-    if(i==34)return '5mr'; if(i==35)return '5pr'; if(i==36)return '5sr';
-    return ACT[i]||('#'+i);
-  }
   function masked(mask){var r=[];for(var i=0;i<46;i++){if(Math.floor(mask/Math.pow(2,i))%2===1)r.push(i);}return r;}
-  function pad(s,n){s=''+s;while(s.length<n)s+=' ';return s;}
   function softmax(qs){var m=Math.max.apply(null,qs);var e=qs.map(function(q){return Math.exp(q-m);});
     var s=e.reduce(function(a,b){return a+b;},0);return e.map(function(x){return x/s;});}
-  function chosen(idx,a){var t=a.type;
-    if(idx<=36)return !!(a.pai&&label(idx)===a.pai);
-    if(idx==37)return t==='reach';
-    if(idx>=38&&idx<=40)return t==='chi';
-    if(idx==41)return t==='pon';
-    if(idx==42)return t==='ankan'||t==='kakan'||t==='daiminkan'||t==='kan';
-    if(idx==43)return t==='hora';
-    if(idx==44)return t==='ryukyoku';
-    return false;}
-  function panel(){var el=document.getElementById('analysis');
-    if(!el){el=document.createElement('div');el.id='analysis';
-      // Appended to the document body. The generator moves the page scale onto
-      // an inner wrapper, so position:fixed here is relative to the viewport
-      // and works across browsers.
-      document.body.appendChild(el);}return el;}
-  function curDecision(a){
-    if(a&&a.meta&&a.meta.q_values)return a;
-    try{var acts=kyokus[currentKyokuId].actions;
-      for(var i=currentActionId;i>=0;i--){if(acts[i].meta&&acts[i].meta.q_values)return acts[i];}}catch(e){}
-    return null;}
-  function render(a){
-    var el=panel();var d=curDecision(a);
-    if(!d){el.innerHTML='<h3>Mortal 分析</h3><div class="an-empty">按 Next ▶ 到出牌或鳴牌的手即可看到分析</div>';return;}
-    var m=d.meta;
-    var idx=masked(m.mask_bits),qs=m.q_values,pis=softmax(qs);
-    var ord=qs.map(function(q,k){return k;}).sort(function(x,y){return qs[y]-qs[x];});
-    var best=ord[0];
-    var sub='actor '+d.actor+' ・ '+d.type;
-    if(m.shanten!=null&&m.shanten>=0)sub+=' ・ 向聽 '+m.shanten;
-    if(m.at_furiten)sub+=' ・ 振聴';
-    var h='<h3>Mortal 分析</h3><div class="an-sub">'+sub+'</div>';
-    ord.forEach(function(k){
-      var i=idx[k],lab=label(i),q=qs[k],pi=pis[k];
-      var isBest=(k===best),isCho=chosen(i,d);
-      var cell=(i<=36)?'<img class="an-pai" src="'+paiToImageUrl(lab)+'">':'<span class="an-act">'+lab+'</span>';
-      var mark=(isBest?'★':'')+(isCho?'◉':'');
-      h+='<div class="an-row'+(isBest?' best':'')+(isCho?' chosen':'')+'">'+
-         '<span class="an-bar" style="width:'+(pi*100).toFixed(1)+'%"></span>'+
-         '<span class="an-mark">'+mark+'</span>'+cell+
-         '<span class="an-q">'+(q>=0?'+':'')+q.toFixed(2)+'</span>'+
-         '<span class="an-pi">'+(pi*100).toFixed(1)+'%</span></div>';
-    });
-    h+='<div class="an-legend">★ 模型最佳・◉ 實際選擇・Q=價值・%=softmax 機率</div>';
-    el.innerHTML=h;
-    // Redundant in-flow mirror: write the same analysis as text into #log-label,
-    // which lives in the visible controller column and does not depend on the
-    // fixed overlay (robust against the page's body transform: scale).
-    try{var ll=document.getElementById('log-label');
-      if(ll){var t='【Mortal 分析】 '+sub+'\\n';
-        ord.forEach(function(k){var i=idx[k];
-          t+=((k===best)?'★':' ')+(chosen(i,d)?'◉':' ')+' '+pad(label(i),7)+
-             pad((qs[k]>=0?'+':'')+qs[k].toFixed(2),8)+(pis[k]*100).toFixed(1)+'%\\n';});
-        ll.textContent=t;}
+  function tileToIdx(t){
+    var m=/^([1-9])([mps])(r)?$/.exec(t);
+    if(m){if(m[3])return {m:34,p:35,s:36}[m[2]];return {m:0,p:9,s:18}[m[2]]+(+m[1])-1;}
+    var h=['E','S','W','N','P','F','C'].indexOf(t);return h>=0?27+h:-1;
+  }
+  function overlay(){var el=document.getElementById('mortal-overlay');
+    if(!el){el=document.createElement('div');el.id='mortal-overlay';document.body.appendChild(el);}return el;}
+  function legend(t){var el=document.getElementById('mortal-legend');
+    if(!el){el=document.createElement('div');el.id='mortal-legend';document.body.appendChild(el);}
+    el.style.display=t?'block':'none';el.innerHTML=t||'';}
+  // For a tsumo frame, the decision is the next action by the same player.
+  function decisionFor(a){
+    if(!a||a.type!=='tsumo')return null;
+    try{var acts=kyokus[currentKyokuId].actions,s=a.actor;
+      for(var i=currentActionId+1;i<acts.length;i++){if(acts[i].actor===s)
+        return (acts[i].meta&&acts[i].meta.q_values)?acts[i]:null;}
     }catch(e){}
+    return null;
+  }
+  function chosenPai(dec,s){
+    if(dec.pai)return dec.pai;
+    try{var acts=kyokus[currentKyokuId].actions,z=acts.indexOf(dec);
+      for(var i=z+1;i<acts.length;i++){if(acts[i].actor===s){
+        if(acts[i].type==='dahai')return acts[i].pai; if(acts[i].type!=='reach')break;}}
+    }catch(e){}
+    return null;
+  }
+  function draw(a){
+    var ov=overlay();ov.innerHTML='';
+    var dec=decisionFor(a);
+    if(!dec){legend('');return;}
+    var s=a.actor,m=dec.meta,idx=masked(m.mask_bits),qs=m.q_values,pis=softmax(qs);
+    var qByIdx={},pByIdx={},bestDi=-1,bestDq=-Infinity;
+    for(var k=0;k<idx.length;k++){qByIdx[idx[k]]=qs[k];pByIdx[idx[k]]=pis[k];
+      if(idx[k]<=36&&qs[k]>bestDq){bestDq=qs[k];bestDi=idx[k];}}
+    var chosen=chosenPai(dec,s);
+    var tiles=(a.board&&a.board.players[s])?a.board.players[s].tehais:null;
+    if(!tiles){legend('');return;}
+    var slot=((s-currentViewpoint)%4+4)%4;
+    var root=document.querySelector('.player-'+slot+' .tehai-container');
+    if(!root){legend('');return;}
+    var hand=[].slice.call(root.querySelectorAll('img.pai:not(.tsumo-pai)'));
+    var tsumo=root.querySelector('img.tsumo-pai');
+    var pairs=[],i;
+    for(i=0;i<hand.length;i++)pairs.push([hand[i],tiles[i]]);
+    if(tsumo&&tsumo.offsetParent!==null)pairs.push([tsumo,tiles[tiles.length-1]]);
+    var sx=window.pageXOffset,sy=window.pageYOffset;
+    pairs.forEach(function(pr){
+      var img=pr[0],t=pr[1];if(!img||!t)return;
+      var ti=tileToIdx(t);if(!(ti in qByIdx))return;
+      var r=img.getBoundingClientRect();if(!r.width)return;
+      var d=document.createElement('div');
+      d.className='tl'+(ti===bestDi?' best':'')+(t===chosen?' cho':'');
+      d.style.left=(r.left+r.width/2+sx)+'px';d.style.top=(r.bottom+3+sy)+'px';
+      d.innerHTML=(qByIdx[ti]>=0?'+':'')+qByIdx[ti].toFixed(2)+'<span class="p">'+(pByIdx[ti]*100).toFixed(0)+'%</span>';
+      ov.appendChild(d);
+    });
+    legend('玩家 '+s+'（'+(dec.type==='reach'?'立直':'出牌')+'）｜<b>綠</b>=模型最佳　<b>藍框</b>=實際打出　數字=Q值/機率'+
+      (m.shanten!=null&&m.shanten>=0?'　｜向聽 '+m.shanten:''));
   }
   function install(){
     if(typeof renderAction!=='function'||typeof jQuery==='undefined'){return setTimeout(install,30);}
     var orig=renderAction;
-    renderAction=function(a){orig(a);try{render(a);}catch(e){}};
-    // The viewer binds "mousewheel" via jQuery, which Chrome treats as a
-    // passive listener, so its preventDefault() is ignored (logging an
-    // [Intervention] warning and letting the page scroll). Replace it with a
-    // non-passive "wheel" listener so wheel navigation works quietly.
+    renderAction=function(a){
+      // show the deciding player's hand at the bottom (unrotated) for readability
+      try{if(a&&a.type==='tsumo'){var dd=decisionFor(a);if(dd&&currentViewpoint!==a.actor)currentViewpoint=a.actor;}}catch(e){}
+      orig(a);
+      try{draw(a);}catch(e){}
+    };
+    // The viewer binds "mousewheel" via jQuery (passive in Chrome, so
+    // preventDefault is ignored -> [Intervention] + page scroll). Use a
+    // non-passive "wheel" listener for quiet, working wheel navigation.
     try{jQuery(window).off('mousewheel');
-      window.addEventListener('wheel', function(e){
-        if(typeof goNext!=='function')return;
-        if(e.deltaY>0)goNext(); else if(e.deltaY<0)goBack();
-        e.preventDefault();
-      }, {passive:false});
+      window.addEventListener('wheel',function(e){if(typeof goNext!=='function')return;
+        if(e.deltaY>0)goNext();else if(e.deltaY<0)goBack();e.preventDefault();},{passive:false});
     }catch(e){}
+    // jump to the first discard decision so analysis is visible on open
     jQuery(function(){try{
-      var acts=kyokus[currentKyokuId].actions;
-      var i=acts.findIndex(function(x){return x.meta&&x.meta.q_values;});
-      if(i>=0){currentActionId=i;var lbl=document.getElementById('action-id-label');if(lbl)lbl.value=i;renderCurrentAction();}
+      var acts=kyokus[currentKyokuId].actions,j=-1,i,k;
+      for(i=0;i<acts.length&&j<0;i++){if(acts[i].type==='tsumo'){var s=acts[i].actor;
+        for(k=i+1;k<acts.length;k++){if(acts[k].actor===s){if(acts[k].meta&&acts[k].meta.q_values)j=i;break;}}}}
+      if(j>=0){currentActionId=j;var lbl=document.getElementById('action-id-label');if(lbl)lbl.value=j;renderCurrentAction();}
     }catch(e){}});
   }
   install();

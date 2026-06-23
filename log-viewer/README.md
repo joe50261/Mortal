@@ -37,10 +37,11 @@ python review_to_html.py \
     --output review.html --standalone
 ```
 
-Add `--analysis` to overlay a panel that, as you step through the game, shows
-the recomputed Q values for every candidate of the player to act — each tile or
-call with its Q value and softmax probability, marking the model's best move
-(★) and the move actually played (◉), plus the shanten.
+Add `--analysis` to label the acting player's hand tiles directly on the board:
+at each draw, every tile shows the recomputed Q value and probability of
+discarding it, highlighting the model's best discard (green) and the tile
+actually played (blue outline), plus the shanten. The viewpoint follows the
+player to move so their hand is always shown upright at the bottom.
 
 The input is an ordinary mjai log (one JSON event per line); any existing
 `meta` fields are ignored and recomputed. `index.html` is git-ignored, so
