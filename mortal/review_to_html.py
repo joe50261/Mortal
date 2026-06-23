@@ -192,9 +192,10 @@ ANALYSIS_JS = '''
     return false;}
   function panel(){var el=document.getElementById('analysis');
     if(!el){el=document.createElement('div');el.id='analysis';
-      // attach to <html>, outside the scaled <body>, so position:fixed is
-      // relative to the viewport and the panel is not scaled.
-      document.documentElement.appendChild(el);}return el;}
+      // Appended to the document body. The generator moves the page scale onto
+      // an inner wrapper, so position:fixed here is relative to the viewport
+      // and works across browsers.
+      document.body.appendChild(el);}return el;}
   function curDecision(a){
     if(a&&a.meta&&a.meta.q_values)return a;
     try{var acts=kyokus[currentKyokuId].actions;
@@ -257,6 +258,23 @@ def inject_analysis(html):
     return html
 
 
+def enable_viewport_overlay(html):
+    '''Move the viewer's `transform: scale()` off <body> onto an inner wrapper.
+
+    The viewer scales <body>, which makes a position:fixed overlay use the
+    transformed <body> as its containing block (scaled / mis-positioned). By
+    wrapping the body content and transforming the wrapper instead, <body> has
+    no transform, so the analysis panel can be a normal fixed child of <body>
+    pinned to the viewport in every browser.
+    '''
+    override = ('<style>body{transform:none !important;overflow-x:hidden}'
+               '#mortal-scale-wrap{transform:scale(2.3);transform-origin:left}</style>')
+    html = html.replace('</head>', override + '</head>', 1)
+    html = re.sub(r'(<body[^>]*>)', r'\1<div id="mortal-scale-wrap">', html, count=1)
+    html = html.replace('</body>', '</div></body>', 1)
+    return html
+
+
 def inline_assets(html, base_dir):
     '''Inline CSS, JS and tile images so the page is a single self-contained file.'''
     # Inline the stylesheet.
@@ -286,8 +304,12 @@ def inline_assets(html, base_dir):
     patch = (
         '<script>\n(function(){\n'
         f'  var IMG_MAP = {json.dumps(img_map)};\n'
+        "  var BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';\n"
         '  var _orig = paiToImageUrl;\n'
-        '  paiToImageUrl = function(pai, pose){ var u = _orig(pai, pose); return IMG_MAP[u] || u; };\n'
+        '  // Never return a file:// path: Chrome/Safari block file->file subresource\n'
+        '  // loads on file:// pages ("unique security origins"). Fall back to a\n'
+        '  // transparent pixel so the page makes zero external requests.\n'
+        '  paiToImageUrl = function(pai, pose){ var u = _orig(pai, pose); return IMG_MAP[u] || BLANK; };\n'
         '})();\n</script>\n'
     )
     return html.replace('</head>', patch + '</head>', 1)
@@ -307,6 +329,9 @@ def render_html(events, template_path, output_path, standalone=False, analysis=F
     html = pattern.sub(lambda m: m.group(1) + '\n' + body + '\n' + m.group(3), template, count=1)
 
     if analysis:
+        # wrap the (clean) template body before injecting scripts, so the body
+        # tag we match is the real one, not a `<body>` inside injected code.
+        html = enable_viewport_overlay(html)
         html = inject_analysis(html)
     if standalone:
         html = inline_assets(html, os.path.dirname(os.path.abspath(template_path)))
