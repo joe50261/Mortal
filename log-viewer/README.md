@@ -37,11 +37,12 @@ python review_to_html.py \
     --output review.html --standalone
 ```
 
-Add `--analysis` to label the acting player's hand tiles directly on the board:
-at each draw, every tile shows the recomputed Q value and probability of
-discarding it, highlighting the model's best discard (green) and the tile
-actually played (blue outline), plus the shanten. The viewpoint follows the
-player to move so their hand is always shown upright at the bottom.
+Add `--analysis` to label every decision directly on the board. For a discard,
+each hand tile shows the recomputed Q value and probability of discarding it; for
+a call (chi/pon/kan) or ron, the candidate options are shown on the tile being
+decided. The model's best option is green and the option actually taken is
+outlined in blue. The viewpoint follows the player to move (shown upright at the
+bottom) and the board is scaled to fit the viewport height.
 
 The input is an ordinary mjai log (one JSON event per line); any existing
 `meta` fields are ignored and recomputed. `index.html` is git-ignored, so
