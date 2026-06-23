@@ -145,9 +145,9 @@ ANALYSIS_CSS = '''
    space (absolute + scroll offset) so labels track tiles when scrolling. */
 #mortal-overlay{position:absolute;left:0;top:0;pointer-events:none;z-index:2147483647}
 #mortal-overlay .tl{position:absolute;transform:translateX(-50%);white-space:nowrap;
-  font:700 12px/1.1 system-ui,sans-serif;padding:1px 4px;border-radius:4px;
+  font:700 11px/1.05 system-ui,sans-serif;padding:1px 3px;border-radius:3px;
   background:rgba(18,19,24,.86);color:#fff;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.5)}
-#mortal-overlay .tl .p{display:block;font-weight:400;font-size:10px;color:#bcd}
+#mortal-overlay .tl .p{display:block;font-weight:400;font-size:9px;color:#bcd}
 #mortal-overlay .tl.best{background:#2f9e54}
 #mortal-overlay .tl.cho{outline:2px solid #5aa0ff;outline-offset:1px}
 #mortal-legend{position:fixed;left:8px;top:8px;z-index:2147483647;pointer-events:none;
@@ -223,6 +223,11 @@ ANALYSIS_JS = '''
     legend('玩家 '+s+'（'+(dec.type==='reach'?'立直':'出牌')+'）｜<b>綠</b>=模型最佳　<b>藍框</b>=實際打出　數字=Q值/機率'+
       (m.shanten!=null&&m.shanten>=0?'　｜向聽 '+m.shanten:''));
   }
+  // Scale the board to fit the viewport height (not width) so the whole board
+  // and the per-tile labels are visible without vertical scrolling.
+  function fit(){var w=document.getElementById('mortal-scale-wrap');if(!w)return;
+    // 550 = board size; reserve ~50px for the per-tile label row below the hand
+    var s=(window.innerHeight-50)/550;if(s>0.1)w.style.transform='scale('+s+')';}
   function install(){
     if(typeof renderAction!=='function'||typeof jQuery==='undefined'){return setTimeout(install,30);}
     var orig=renderAction;
@@ -232,6 +237,8 @@ ANALYSIS_JS = '''
       orig(a);
       try{draw(a);}catch(e){}
     };
+    // refit and reposition labels when the window resizes
+    window.addEventListener('resize',function(){fit();try{renderCurrentAction();}catch(e){}});
     // The viewer binds "mousewheel" via jQuery (passive in Chrome, so
     // preventDefault is ignored -> [Intervention] + page scroll). Use a
     // non-passive "wheel" listener for quiet, working wheel navigation.
@@ -239,12 +246,14 @@ ANALYSIS_JS = '''
       window.addEventListener('wheel',function(e){if(typeof goNext!=='function')return;
         if(e.deltaY>0)goNext();else if(e.deltaY<0)goBack();e.preventDefault();},{passive:false});
     }catch(e){}
-    // jump to the first discard decision so analysis is visible on open
+    // fit to height, then jump to the first discard decision so analysis is visible on open
     jQuery(function(){try{
+      fit();
       var acts=kyokus[currentKyokuId].actions,j=-1,i,k;
       for(i=0;i<acts.length&&j<0;i++){if(acts[i].type==='tsumo'){var s=acts[i].actor;
         for(k=i+1;k<acts.length;k++){if(acts[k].actor===s){if(acts[k].meta&&acts[k].meta.q_values)j=i;break;}}}}
-      if(j>=0){currentActionId=j;var lbl=document.getElementById('action-id-label');if(lbl)lbl.value=j;renderCurrentAction();}
+      if(j>=0){currentActionId=j;var lbl=document.getElementById('action-id-label');if(lbl)lbl.value=j;}
+      renderCurrentAction();
     }catch(e){}});
   }
   install();
@@ -268,8 +277,8 @@ def enable_viewport_overlay(html):
     no transform, so the analysis panel can be a normal fixed child of <body>
     pinned to the viewport in every browser.
     '''
-    override = ('<style>body{transform:none !important;overflow-x:hidden}'
-               '#mortal-scale-wrap{transform:scale(2.3);transform-origin:left}</style>')
+    override = ('<style>html,body{margin:0}body{transform:none !important}'
+               '#mortal-scale-wrap{transform:scale(2.3);transform-origin:top left}</style>')
     html = html.replace('</head>', override + '</head>', 1)
     html = re.sub(r'(<body[^>]*>)', r'\1<div id="mortal-scale-wrap">', html, count=1)
     html = html.replace('</body>', '</div></body>', 1)
