@@ -154,6 +154,7 @@ ANALYSIS_CSS = '''
 #mortal-overlay .tl.call .opt{font-weight:700;white-space:nowrap}
 #mortal-overlay .tl.call .opt.b{background:#2f9e54;border-radius:3px;padding:0 3px}
 #mortal-overlay .tl.call .opt.c{outline:1px solid #5aa0ff;border-radius:3px}
+#mortal-overlay .tl.stack{transform:translate(-100%,-50%);text-align:left;margin-left:-4px}
 #mortal-legend{position:fixed;left:8px;top:8px;z-index:2147483647;pointer-events:none;
   font:12px/1.5 system-ui,sans-serif;background:rgba(18,19,24,.82);color:#eee;
   padding:6px 9px;border-radius:6px;max-width:60vw}
@@ -185,7 +186,7 @@ ANALYSIS_JS = '''
   }
   function callName(i){return ({37:'立直',38:'吃',39:'吃',40:'吃',41:'碰',42:'槓',43:'和',44:'流局',45:'見逃'})[i]||('#'+i);}
   function isChosenCall(i,dec){var t=dec.type;
-    return (i===41&&t==='pon')||(i>=38&&i<=40&&t==='chi')||(i===42&&(t==='daiminkan'||t==='ankan'||t==='kakan'))||(i===43&&t==='hora')||(i===37&&t==='reach');}
+    return (i===41&&t==='pon')||(i>=38&&i<=40&&t==='chi')||(i===42&&(t==='daiminkan'||t==='ankan'||t==='kakan'))||(i===43&&t==='hora')||(i===44&&t==='ryukyoku')||(i===37&&t==='reach');}
   function lastHo(seat){var sl=((seat-currentViewpoint)%4+4)%4;
     var imgs=[].slice.call(document.querySelectorAll('.player-'+sl+' .ho img')).filter(function(im){
       return im.offsetParent!==null&&(im.getAttribute('src')||'').indexOf('data:')===0;});
@@ -204,51 +205,62 @@ ANALYSIS_JS = '''
     if(!dec){legend('');return;}
     var s=dec.actor,m=dec.meta,idx=masked(m.mask_bits),qs=m.q_values,pis=softmax(qs);
     var sx=window.pageXOffset,sy=window.pageYOffset;
-    if(dec.type==='dahai'||dec.type==='reach'){
-      // per-tile discard analysis on the acting player's hand
-      var qByIdx={},pByIdx={},bestDi=-1,bestDq=-Infinity;
-      for(var k=0;k<idx.length;k++){qByIdx[idx[k]]=qs[k];pByIdx[idx[k]]=pis[k];
-        if(idx[k]<=36&&qs[k]>bestDq){bestDq=qs[k];bestDi=idx[k];}}
-      var chosen=chosenPai(dec,s);
+    var ord=idx.map(function(_,k){return k;}).sort(function(x,y){return qs[y]-qs[x];});
+    var bestK=ord[0],bestIdx=idx[bestK];
+    var isCall=(dec.target!=null&&dec.target!==s);  // pon/chi/kan/ron on another player
+    if(!isCall){
+      // own turn: per-tile discard Q on the hand + chips for non-tile actions
+      // (riichi/kan/agari/ryukyoku), which do not map to a single tile.
+      var qByIdx={},pByIdx={};
+      for(var k=0;k<idx.length;k++){qByIdx[idx[k]]=qs[k];pByIdx[idx[k]]=pis[k];}
+      var chosenTile=(dec.type==='dahai')?dec.pai:null;
       var tiles=(a.board&&a.board.players[s])?a.board.players[s].tehais:null;
-      if(!tiles){legend('');return;}
       var slot=((s-currentViewpoint)%4+4)%4;
       var root=document.querySelector('.player-'+slot+' .tehai-container');
-      if(!root){legend('');return;}
-      var hand=[].slice.call(root.querySelectorAll('img.pai:not(.tsumo-pai)'));
-      var tsumo=root.querySelector('img.tsumo-pai');
-      var pairs=[],i;
-      for(i=0;i<hand.length;i++)pairs.push([hand[i],tiles[i]]);
-      if(tsumo&&tsumo.offsetParent!==null)pairs.push([tsumo,tiles[tiles.length-1]]);
-      pairs.forEach(function(pr){
-        var img=pr[0],t=pr[1];if(!img||!t)return;
-        var ti=tileToIdx(t);if(!(ti in qByIdx))return;
-        var r=img.getBoundingClientRect();if(!r.width)return;
-        var d=document.createElement('div');
-        d.className='tl'+(ti===bestDi?' best':'')+(t===chosen?' cho':'');
-        d.style.left=(r.left+r.width/2+sx)+'px';d.style.top=(r.bottom+3+sy)+'px';
-        d.innerHTML=(qByIdx[ti]>=0?'+':'')+qByIdx[ti].toFixed(2)+'<span class="p">'+(pByIdx[ti]*100).toFixed(0)+'%</span>';
-        ov.appendChild(d);
-      });
-      legend('玩家 '+s+'（'+(dec.type==='reach'?'立直':'出牌')+'）｜<b>綠</b>=模型最佳　<b>藍框</b>=實際打出　數字=Q值/機率'+
+      if(tiles&&root){
+        var hand=[].slice.call(root.querySelectorAll('img.pai:not(.tsumo-pai)'));
+        var tsumo=root.querySelector('img.tsumo-pai');
+        var pairs=[],i;
+        for(i=0;i<hand.length;i++)pairs.push([hand[i],tiles[i]]);
+        if(tsumo&&tsumo.offsetParent!==null)pairs.push([tsumo,tiles[tiles.length-1]]);
+        pairs.forEach(function(pr){
+          var img=pr[0],t=pr[1];if(!img||!t)return;
+          var ti=tileToIdx(t);if(!(ti in qByIdx))return;
+          var r=img.getBoundingClientRect();if(!r.width)return;
+          var d=document.createElement('div');
+          d.className='tl'+(ti===bestIdx?' best':'')+(t===chosenTile?' cho':'');
+          d.style.left=(r.left+r.width/2+sx)+'px';d.style.top=(r.bottom+3+sy)+'px';
+          d.innerHTML=(qByIdx[ti]>=0?'+':'')+qByIdx[ti].toFixed(2)+'<span class="p">'+(pByIdx[ti]*100).toFixed(0)+'%</span>';
+          ov.appendChild(d);
+        });
+        var nonT=ord.filter(function(k){var ix=idx[k];return ix===37||ix===42||ix===43||ix===44;});
+        if(nonT.length){
+          var rr=root.getBoundingClientRect();
+          var box=document.createElement('div');box.className='tl call stack';
+          var html='';
+          nonT.forEach(function(k){var ix=idx[k];
+            html+='<div class="opt'+(k===bestK?' b':'')+(isChosenCall(ix,dec)?' c':'')+'">'+
+              callName(ix)+' '+(qs[k]>=0?'+':'')+qs[k].toFixed(2)+' '+(pis[k]*100).toFixed(0)+'%</div>';});
+          box.innerHTML=html;
+          box.style.left=(rr.left+sx)+'px';box.style.top=(rr.top+sy+rr.height/2)+'px';
+          ov.appendChild(box);
+        }
+      }
+      legend('玩家 '+s+'（出牌/立直）｜<b>綠</b>=模型最佳　<b>藍框</b>=實際選擇　手牌數字=打該張的Q值/機率，左側晶片=立直/槓/和等動作'+
         (m.shanten!=null&&m.shanten>=0?'　｜向聽 '+m.shanten:''));
     }else{
-      // call / kan / ron decision: annotate the tile being decided on
-      var ord=idx.map(function(_,k){return k;}).sort(function(x,y){return qs[y]-qs[x];});
-      var bestK=ord[0];
-      var target=(dec.target!=null)?dec.target:s;
-      var tImg=lastHo(target);
-      if(!tImg){var sl2=((s-currentViewpoint)%4+4)%4;tImg=document.querySelector('.player-'+sl2+' .tehai-container img.pai');}
+      // call / ron: annotate the tile being decided on with the candidate options
+      var tImg=lastHo(dec.target);
       if(!tImg){legend('');return;}
       var r2=tImg.getBoundingClientRect();
-      var box=document.createElement('div');box.className='tl call';
-      var html='';
-      ord.forEach(function(k){html+='<div class="opt'+(k===bestK?' b':'')+(isChosenCall(idx[k],dec)?' c':'')+'">'+
+      var box2=document.createElement('div');box2.className='tl call';
+      var html2='';
+      ord.forEach(function(k){html2+='<div class="opt'+(k===bestK?' b':'')+(isChosenCall(idx[k],dec)?' c':'')+'">'+
         callName(idx[k])+' '+(qs[k]>=0?'+':'')+qs[k].toFixed(2)+' '+(pis[k]*100).toFixed(0)+'%</div>';});
-      box.innerHTML=html;
-      box.style.left=(r2.left+r2.width/2+sx)+'px';box.style.top=(r2.bottom+3+sy)+'px';
-      ov.appendChild(box);
-      legend('玩家 '+s+'（'+callName(idx[bestK])+' 等鳴牌判斷）｜<b>綠</b>=模型最佳　<b>藍框</b>=實際選擇　標在被決策的牌上');
+      box2.innerHTML=html2;
+      box2.style.left=(r2.left+r2.width/2+sx)+'px';box2.style.top=(r2.bottom+3+sy)+'px';
+      ov.appendChild(box2);
+      legend('玩家 '+s+'（'+callName(bestIdx)+' 等鳴牌/榮和判斷）｜<b>綠</b>=模型最佳　<b>藍框</b>=實際選擇　標在被決策的牌上');
     }
   }
   // Scale the board to fit the viewport height (not width) so the whole board

@@ -40,9 +40,13 @@ python review_to_html.py \
 Add `--analysis` to label every decision directly on the board. For a discard,
 each hand tile shows the recomputed Q value and probability of discarding it; for
 a call (chi/pon/kan) or ron, the candidate options are shown on the tile being
-decided. The model's best option is green and the option actually taken is
-outlined in blue. The viewpoint follows the player to move (shown upright at the
-bottom) and the board is scaled to fit the viewport height.
+decided. Actions that do not map to a single tile — riichi, kan, agari, ryukyoku
+— are shown as chips beside the hand (in Mortal's action space riichi is a
+separate action: it is chosen against the non-riichi discards first, then the
+riichi discard is decided on the next turn). The model's best option is green and
+the option actually taken is outlined in blue. The viewpoint follows the player
+to move (shown upright at the bottom) and the board is scaled to fit the viewport
+height.
 
 The input is an ordinary mjai log (one JSON event per line); any existing
 `meta` fields are ignored and recomputed. `index.html` is git-ignored, so
