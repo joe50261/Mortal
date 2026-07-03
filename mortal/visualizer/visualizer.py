@@ -450,6 +450,10 @@ class MahjongTable:
                         win_tile = Tile(
                             claim_tile.id(), is_open=True, highlighting=True
                         )
+                        # on a multi-ron every winner displays the claimed
+                        # tile, but only the first copy stands in for the
+                        # single physical tile in the wall count
+                        win_tile.is_transparent = not first_hora
                         hands[actor].append(win_tile)
                         last_draw[actor] = win_tile
                         winner.draw_now = True
@@ -487,6 +491,7 @@ class MahjongTable:
             hand = hands[seat]
             drawn = last_draw[seat]
             if p.draw_now and drawn is not None and drawn in hand:
+                drawn.is_highlighting = True
                 rest = sorted(
                     [t for t in hand if t is not drawn], key=lambda t: t.id()
                 )

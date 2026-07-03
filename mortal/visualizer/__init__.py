@@ -18,7 +18,6 @@ or from the command line (run inside the ``mortal`` directory)::
 
 from .const import EndKind, RelativePlayerIdx, TileUnitType
 from .converter import mjai_str_to_tile_id, tile_id_to_mjai_str
-from .svg import save_svg, show_svg, to_svg
 from .visualizer import (
     GameBoardVisualizer,
     GameVisualConfig,
@@ -28,6 +27,16 @@ from .visualizer import (
     TileUnit,
     load_mjai_log,
 )
+
+
+def __getattr__(name):
+    # lazy re-export so that text mode works without svgwrite installed
+    if name in ("save_svg", "show_svg", "to_svg"):
+        from . import svg
+
+        return getattr(svg, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "EndKind",

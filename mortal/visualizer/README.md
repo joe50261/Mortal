@@ -10,6 +10,8 @@ Mortal instead of mjx's protobuf messages. The bundled assets come from
 mjx as well: the `GL-MahjongTile.ttf` font (whose glyphs for the Unicode
 mahjong tile block are the tile images embedded into the SVG output) and
 the score stick images (`1000.svg`, `1000_mini.svg`, `100_mini.svg`).
+The original mjx copyright and MIT permission notice are reproduced in
+[`LICENSE.mjx`](LICENSE.mjx).
 
 ## Usage
 
