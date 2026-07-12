@@ -36,6 +36,9 @@ $ python -m visualizer game.json.gz --mode rich
 
 # dump one SVG per event (a flip book of the whole game)
 $ python -m visualizer game.json.gz --all-dir out/
+
+# interactive whole-game move-evaluation page (see below)
+$ python -m visualizer game.json.gz --review --out review.html
 ```
 
 Programmatic use:
@@ -55,6 +58,35 @@ table = MahjongTable.from_mjai_events(events, index=42, perspective=2)
 
 In a Jupyter notebook, `visualizer.show_svg(events, index=42)` displays
 the board inline.
+
+## Whole-game review (`--review`)
+
+Mortal's arena writes its own evaluation of every decision into the log:
+`meta.q_values` holds the Q values of the legal actions and `meta.mask_bits`
+marks which of the 46 actions of the model's action space they belong to
+(bit *i* set ⇒ action *i* is legal, the *k*-th set bit pairs with
+`q_values[k]`; see `libriichi/src/consts.rs` and `agent/mortal.rs`).
+`--review` decodes those fields and builds a single self-contained HTML
+page that steps through the whole game, with the evaluation drawn directly
+on the board:
+
+- every candidate discard gets its policy probability (softmax over the
+  legal Q values, τ = 1) written on the tile in hand, with a proportional
+  bar underneath, and the engine's top choice is framed;
+- call options (chi/pon/kan/riichi/agari/pass) become chips above the
+  hand showing the hand tiles the call would use;
+- decision frames show the board *at decision time*, i.e. right before
+  the evaluated action was taken;
+- the timeline marks decision points, deviations (actual play differs
+  from the engine's top choice) and wins; a details table lists the exact
+  Q values per candidate.
+
+`--review` reviews one seat per page (default: the seat with the most
+evaluations in the log; pass a seat number to pick). Logs without `meta`
+(e.g. hand-written or converted logs) cannot be reviewed this way — the
+engine has to be replayed to produce evaluations first, which is what
+`MORTAL_REVIEW_MODE=1 python mortal.py <seat>` does; merging that output
+into this page is not implemented yet.
 
 Try it on the example log embedded in the log viewer:
 

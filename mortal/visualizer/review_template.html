@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+__FONT_CSS__
+:root {
+  --surface-1: #fcfcfb; --page: #f9f9f7;
+  --ink-1: #0b0b0b; --ink-2: #52514e; --ink-3: #898781;
+  --grid: #e1e0d9; --border: rgba(11,11,11,0.10);
+  --accent: #2a78d6; --bar: #2a78d6; --bar-track: #eceae4;
+  --crit: #d03b3b; --good: #006300;
+  --chip-bg: #eef3fb;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface-1: #1a1a19; --page: #0d0d0d;
+    --ink-1: #ffffff; --ink-2: #c3c2b7; --ink-3: #898781;
+    --grid: #2c2c2a; --border: rgba(255,255,255,0.10);
+    --accent: #3987e5; --bar: #3987e5; --bar-track: #2c2c2a;
+    --crit: #e66767; --good: #0ca30c;
+    --chip-bg: #22304a;
+  }
+  .board-wrap { background: #f2f1ec; } /* 盤面為黑線稿,深色模式墊淺底 */
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--ink-1);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px; line-height: 1.5;
+}
+.tile-glyph { font-family: "GL-MahjongTile", sans-serif; font-size: 22px; line-height: 1; }
+.tile-glyph.aka { color: #c22; }
+
+header {
+  display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+  padding: 12px 20px; background: var(--surface-1); border-bottom: 1px solid var(--border);
+}
+header h1 { font-size: 16px; margin: 0; }
+header .meta { color: var(--ink-2); font-size: 13px; }
+
+main { display: flex; gap: 16px; padding: 16px 20px; align-items: flex-start; flex-wrap: wrap; }
+.board-col { flex: 1 1 460px; min-width: 380px; max-width: 760px; }
+.board-wrap {
+  position: relative; background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+}
+.frame { display: none; }
+.frame.on { display: block; }
+.board-svg { display: block; width: 100%; height: auto; }
+#overlay {
+  position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;
+}
+
+.controls {
+  display: flex; align-items: center; gap: 10px; margin-top: 10px;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px;
+}
+.controls button, .controls select {
+  font: inherit; padding: 4px 10px; cursor: pointer; border-radius: 6px;
+  border: 1px solid var(--border); background: transparent; color: var(--ink-1);
+}
+.controls button:hover { background: var(--chip-bg); }
+.controls input[type=range] { flex: 1; accent-color: var(--accent); }
+.controls .counter { color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tickrow { display: flex; padding: 0 14px; margin-top: 6px; }
+.tickrow span {
+  flex: 1; height: 8px; border-radius: 2px; background: var(--bar-track);
+  margin: 0 1px; cursor: pointer; min-width: 3px;
+}
+.tickrow span.decision { background: var(--accent); }
+.tickrow span.dev { background: var(--crit); }
+.tickrow span.hora-tick { background: var(--good); }
+.tickrow span.cur { outline: 2px solid var(--ink-1); outline-offset: 1px; }
+.legend { color: var(--ink-3); font-size: 12px; padding: 4px 14px 0; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; vertical-align: baseline; margin: 0 3px 0 8px; }
+kbd {
+  font: 11px/1.4 system-ui; border: 1px solid var(--border); border-bottom-width: 2px;
+  border-radius: 4px; padding: 0 5px; color: var(--ink-2);
+}
+
+.eval-col { flex: 1 1 340px; min-width: 320px; display: flex; flex-direction: column; gap: 12px; }
+.panel {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+}
+.panel h2 { font-size: 13px; margin: 0 0 8px; color: var(--ink-2); font-weight: 600; }
+.evhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.evhead .who { font-weight: 600; }
+.chip {
+  font-size: 12px; border-radius: 999px; padding: 1px 10px;
+  background: var(--chip-bg); color: var(--ink-2); border: 1px solid var(--border);
+}
+.chip.ok { color: var(--good); border-color: var(--good); }
+.chip.bad { color: var(--crit); border-color: var(--crit); font-weight: 600; }
+.chip.win { color: var(--good); border-color: var(--good); font-weight: 600; }
+
+table.cands { width: 100%; border-collapse: collapse; }
+table.cands th {
+  text-align: left; font-size: 12px; color: var(--ink-3); font-weight: 500;
+  border-bottom: 1px solid var(--grid); padding: 2px 6px;
+}
+table.cands th.num, table.cands td.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.cands td { padding: 3px 6px; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+table.cands tr:last-child td { border-bottom: none; }
+table.cands tr.taken td { font-weight: 600; }
+table.cands tr.taken td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+table.cands tr.taken.dev td:first-child { box-shadow: inset 3px 0 0 var(--crit); }
+.actlabel { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.pbar { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+.pbar .track { flex: 1; height: 10px; background: var(--bar-track); border-radius: 0 4px 4px 0; overflow: hidden; }
+.pbar .fill { height: 100%; background: var(--bar); border-radius: 0 4px 4px 0; }
+.pbar .val { width: 52px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 13px; }
+.noeval { color: var(--ink-3); font-size: 13px; }
+.winbox { color: var(--good); font-weight: 600; font-size: 15px; }
+.badges { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+footer { color: var(--ink-3); font-size: 12px; padding: 4px 20px 20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>__TITLE__</h1>
+  <span class="meta">與引擎首選一致率 <b>__RATE__</b></span>
+</header>
+
+<main>
+  <div class="board-col">
+    <div class="board-wrap">
+      <div id="boards">__BOARDS__</div>
+      <svg id="overlay" viewBox="0 0 800 800"></svg>
+    </div>
+    <div class="controls">
+      <select id="kyoku" aria-label="選擇局"></select>
+      <button id="prev" aria-label="上一手">◀</button>
+      <button id="next" aria-label="下一手">▶</button>
+      <input type="range" id="slider" min="0" max="0" value="0" step="1">
+      <span class="counter" id="counter"></span>
+    </div>
+    <div class="tickrow" id="ticks" aria-label="事件時間軸"></div>
+    <div class="legend">
+      <span class="dot" style="background:var(--accent)"></span>決策點(實際=首選)
+      <span class="dot" style="background:var(--crit)"></span>偏離(實際≠首選)
+      <span class="dot" style="background:var(--good)"></span>和了
+      &nbsp;&nbsp;<kbd>←</kbd><kbd>→</kbd> 翻手
+    </div>
+  </div>
+
+  <div class="eval-col">
+    <div class="panel">
+      <h2>本手評估</h2>
+      <div id="evalbody"></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  盤面:visualizer 逐事件 SVG,決策格顯示該手執行前的盤面(牌上 π%、藍框=引擎首選)。
+  評估:log 內 <code>meta.q_values</code> + <code>mask_bits</code> 解碼(46 動作空間),π 為 softmax(τ=1)。
+</footer>
+
+<script>
+const DATA = __DATA__;
+const KYOKUS = __KYOKUS__;
+let cur = 0;
+const framesEl = document.querySelectorAll('#boards .frame');
+const overlay = document.getElementById('overlay');
+const slider = document.getElementById('slider');
+const ticks = document.getElementById('ticks');
+const kyokuSel = document.getElementById('kyoku');
+
+KYOKUS.forEach((k, n) => {
+  const o = document.createElement('option');
+  o.value = n; o.textContent = k.label;
+  kyokuSel.appendChild(o);
+});
+
+function kyokuOf(n) {
+  return KYOKUS.findIndex(k => n >= k.a && n <= k.b);
+}
+
+function esc(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+function buildTicks(kn) {
+  ticks.innerHTML = '';
+  const k = KYOKUS[kn];
+  for (let n = k.a; n <= k.b; n++) {
+    const f = DATA[n];
+    const s = document.createElement('span');
+    if (f.eval) s.className = f.eval.dev ? 'dev' : 'decision';
+    if (f.hora) s.className = 'hora-tick';
+    s.title = `#${f.i} ${f.who} ${f.desc}`;
+    s.onclick = () => go(n);
+    ticks.appendChild(s);
+  }
+  slider.min = k.a; slider.max = k.b;
+}
+
+function render(f) {
+  const el = document.getElementById('evalbody');
+  let h = `<div class="evhead"><span class="who">${esc(f.who)}</span><span>${esc(f.desc)}</span>`;
+  if (f.eval) {
+    h += f.eval.dev
+      ? `<span class="chip bad">偏離 — 實際≠引擎首選</span>`
+      : `<span class="chip ok">一致 ✓</span>`;
+    h += `</div>`;
+    h += `<div class="noeval" style="margin-bottom:8px">盤面為決策時點(事件 #${f.i} 執行前);主要數字疊在盤上,下表為明細。</div>`;
+    h += `<table class="cands"><thead><tr><th>動作 a</th><th class="num">Q̂(s,a)</th><th>π(a|s)</th></tr></thead><tbody>`;
+    for (const c of f.eval.cands) {
+      const g = c.glyph ? `<span class="tile-glyph${c.aka ? ' aka' : ''}">${c.glyph}</span>` : '';
+      const pct = (c.p * 100).toFixed(1) + '%';
+      const cls = (c.taken ? 'taken' : '') + (c.taken && f.eval.dev ? ' dev' : '');
+      h += `<tr class="${cls}"><td><span class="actlabel">${esc(c.label)}${g}${c.taken ? ' <span class="chip">實際</span>' : ''}</span></td>` +
+           `<td class="num">${c.q.toFixed(3)}</td>` +
+           `<td><span class="pbar"><span class="track"><span class="fill" style="width:${Math.max(c.p*100,1)}%"></span></span><span class="val">${pct}</span></span></td></tr>`;
+    }
+    h += `</tbody></table>`;
+    h += `<div class="badges">` +
+         (f.eval.shanten != null ? `<span class="chip">向聽 ${f.eval.shanten}</span>` : '') +
+         (f.eval.furiten != null ? `<span class="chip">${f.eval.furiten ? '振聽' : '非振聽'}</span>` : '') +
+         (f.eval.greedy != null ? `<span class="chip">${f.eval.greedy ? 'greedy' : 'sampled'}</span>` : '') +
+         `</div>`;
+  } else if (f.hora) {
+    h += `<span class="chip win">和了</span></div>`;
+    h += `<div class="winbox">${esc(f.who)} ${esc(f.desc)}</div>` +
+         `<div class="noeval" style="margin-top:6px">點數變動見盤面中央。</div>`;
+  } else {
+    h += `</div><div class="noeval">本手無此座位的評估資料(log 內無 meta)。</div>`;
+  }
+  el.innerHTML = h;
+}
+
+function go(n) {
+  cur = Math.max(0, Math.min(DATA.length - 1, n));
+  const f = DATA[cur];
+  framesEl.forEach((el, k) => el.classList.toggle('on', k === f.board));
+  overlay.innerHTML = f.overlay || '';
+  const kn = kyokuOf(cur);
+  if (+kyokuSel.value !== kn) { kyokuSel.value = kn; buildTicks(kn); }
+  const k = KYOKUS[kn];
+  ticks.querySelectorAll('span').forEach((t, j) => t.classList.toggle('cur', k.a + j === cur));
+  slider.value = cur;
+  document.getElementById('counter').textContent =
+    `事件 #${f.i}(${cur - k.a + 1}/${k.b - k.a + 1})`;
+  render(f);
+}
+
+document.getElementById('prev').onclick = () => go(cur - 1);
+document.getElementById('next').onclick = () => go(cur + 1);
+slider.oninput = e => go(+e.target.value);
+kyokuSel.onchange = () => { buildTicks(+kyokuSel.value); go(KYOKUS[+kyokuSel.value].a); };
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft') go(cur - 1);
+  if (e.key === 'ArrowRight') go(cur + 1);
+});
+buildTicks(0);
+go(0);
+</script>
+</body>
+</html>

@@ -78,6 +78,17 @@ def main() -> None:
         default=None,
         help="render every event of the log as SVG files into this directory",
     )
+    parser.add_argument(
+        "--review",
+        nargs="?",
+        type=int,
+        const=-1,
+        default=None,
+        metavar="SEAT",
+        help="build an interactive whole-game move-evaluation HTML page from "
+        "the meta.q_values the engine wrote into the log; SEAT picks the "
+        "seat to review (default: the seat with the most evaluations)",
+    )
     parser.add_argument("--list", action="store_true", help="list events with indices and exit")
     parser.add_argument("--uni", action="store_true", help="use Unicode tile glyphs in text mode")
     parser.add_argument(
@@ -104,6 +115,24 @@ def main() -> None:
 
     lang = 0 if args.lang == "en" else 1
     show_name = not args.no_name
+
+    if args.review is not None:
+        from .review import save_review_html
+
+        actor = None if args.review == -1 else args.review
+        out = args.out
+        if out is None:
+            base = os.path.basename(args.log) if args.log != "-" else "review"
+            for suffix in (".gz", ".json", ".jsonl"):
+                if base.endswith(suffix):
+                    base = base[: -len(suffix)]
+            out = base + ".review.html"
+        try:
+            save_review_html(events, out, actor=actor)
+        except ValueError as e:
+            sys.exit(f"error: {e}")
+        print(f"wrote {out}")
+        return
 
     if args.all_dir is not None:
         from .svg import save_svg
