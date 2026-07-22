@@ -82,11 +82,27 @@ on the board:
   Q values per candidate.
 
 `--review` reviews one seat per page (default: the seat with the most
-evaluations in the log; pass a seat number to pick). Logs without `meta`
-(e.g. hand-written or converted logs) cannot be reviewed this way — the
-engine has to be replayed to produce evaluations first, which is what
-`MORTAL_REVIEW_MODE=1 python mortal.py <seat>` does; merging that output
-into this page is not implemented yet.
+evaluations in the log; pass a seat number to pick).
+
+Inline `meta` only exists on events that actually happened, so decisions
+that leave no event in the log — above all declined calls, where the
+engine weighed chi/pon/kan/ron against passing and passed — are invisible
+to plain `--review`. To cover them (and to review logs that carry no
+`meta` at all, e.g. converted human records), replay the log through the
+engine and merge its full per-event reaction stream:
+
+```sh
+$ MORTAL_REVIEW_MODE=1 python mortal.py 2 < game.jsonl > reactions.jsonl
+$ python -m visualizer game.jsonl --review 2 --reactions reactions.jsonl
+```
+
+Review mode emits exactly one reaction line per input event (a trailing
+GRP line is ignored), evaluating every decision point including the ones
+that end in a pass. Reaction decisions are shown on the frame of the
+event they respond to — the board right after it is the decision state —
+and moments the engine would have played differently than the log are
+marked as deviations on the timeline. When a decision is covered both
+inline and by a reaction, the inline evaluation wins.
 
 Try it on the example log embedded in the log viewer:
 

@@ -88,11 +88,9 @@ def _action_index_of(event: Event) -> Optional[int]:
         low = sorted(mjai_str_to_tile_id(p) // 4 for p in event["consumed"])
         pai = mjai_str_to_tile_id(event["pai"]) // 4
         return 38 if pai < low[0] else (39 if low[0] < pai < low[1] else 40)
-    if kind in ("ankan", "kakan"):
-        # the kan-select stage reuses tile indices; the decide stage is 42
-        return _MJAI_37.index(event["pai"]) if "pai" in event else 42
     return {
-        "pon": 41, "daiminkan": 42, "hora": 43, "ryukyoku": 44, "reach": 37,
+        "pon": 41, "daiminkan": 42, "ankan": 42, "kakan": 42,
+        "hora": 43, "ryukyoku": 44, "reach": 37,
     }.get(kind)
 
 
@@ -168,7 +166,7 @@ def _fmt_pct(p: float) -> str:
 def _overlay_svg(
     cands: List[Dict[str, Any]],
     hand,
-    ev_index: int,
+    note: str,
     claimed: Optional[str],
     kan_choice: bool,
 ) -> str:
@@ -176,7 +174,7 @@ def _overlay_svg(
     parts = [
         '<g style="font-family:system-ui,-apple-system,sans-serif;">',
         f'<text x="{_LEFT_MARGIN}" y="666" font-size="12" fill="{_INK3}">'
-        f"決策時點 — 事件 #{ev_index} 執行前</text>",
+        f"{note}</text>",
     ]
     chip_x = _LEFT_MARGIN
     best = cands[0]["idx"]
@@ -289,15 +287,60 @@ def _detect_actor(events: List[Event]) -> int:
     return max(range(4), key=lambda i: counts[i])
 
 
-def to_review_html(events: List[Event], actor: Optional[int] = None) -> str:
-    """Build the review page for ``actor`` (autodetected if ``None``)."""
+def _check_reactions(
+    reactions: List[Event], events: List[Event]
+) -> List[Event]:
+    """Validate a ``MORTAL_REVIEW_MODE=1 mortal.py`` output stream.
+
+    The stream carries exactly one reaction line per input event; in
+    review mode a trailing extra line with GRP data (``model_tag`` /
+    ``phi_matrix``) may follow, which is dropped here.
+    """
+    if len(reactions) == len(events) + 1 and (
+        "phi_matrix" in reactions[-1] or "model_tag" in reactions[-1]
+    ):
+        reactions = reactions[:-1]
+    if len(reactions) != len(events):
+        raise ValueError(
+            f"reactions stream has {len(reactions)} lines for {len(events)} "
+            "events; expected one reaction per event "
+            "(the output of MORTAL_REVIEW_MODE=1 python mortal.py <seat>)"
+        )
+    return reactions
+
+
+def to_review_html(
+    events: List[Event],
+    actor: Optional[int] = None,
+    reactions: Optional[List[Event]] = None,
+) -> str:
+    """Build the review page for ``actor`` (autodetected if ``None``).
+
+    ``reactions`` is an optional per-event reaction stream produced by
+    ``MORTAL_REVIEW_MODE=1 python mortal.py <seat>``.  It supplies
+    evaluations for the moments that leave no trace in the log itself —
+    above all declined calls (the engine weighing chi/pon/kan/ron against
+    passing) — and for logs that carry no inline ``meta`` at all, such as
+    converted human game records.  When both an inline evaluation and a
+    reaction cover the same decision, the inline one wins.
+    """
     from .svg import to_svg
 
     events = list(events)
     if actor is None:
-        actor = _detect_actor(events)
+        try:
+            actor = _detect_actor(events)
+        except ValueError:
+            if reactions is None:
+                raise
+            raise ValueError(
+                "the log has no inline meta to autodetect the seat from; "
+                "pass the seat to review explicitly"
+            ) from None
     if not 0 <= actor <= 3:
         raise ValueError(f"actor must be within [0, 3], got {actor}")
+    if reactions is not None:
+        reactions = _check_reactions(list(reactions), events)
 
     start_game = next((e for e in events if e["type"] == "start_game"), {})
     names = start_game.get("names", [f"player {i}" for i in range(4)])
@@ -317,28 +360,72 @@ def to_review_html(events: List[Event], actor: Optional[int] = None) -> str:
         if event["type"] == "start_kyoku":
             kyokus.append({"label": _kyoku_label(event), "a": len(frames)})
         meta = event.get("meta", {})
-        is_decision = (
+        is_inline = (
             "q_values" in meta and event.get("actor") == actor and i > first
         )
+
+        # a reaction decision responds to event i and is displayed on frame
+        # i, whose board (right after event i) is the decision state; it is
+        # skipped when the action it led to carries the same evaluation
+        # inline (frame i+1 would show it on the very same board)
+        reaction = None
+        if not is_inline and reactions is not None:
+            nxt = events[i + 1] if i + 1 < len(events) else None
+            nxt_inline = (
+                nxt is not None
+                and "q_values" in nxt.get("meta", {})
+                and nxt.get("actor") == actor
+            )
+            if "q_values" in reactions[i].get("meta", {}) and not nxt_inline:
+                reaction = reactions[i]
 
         who, desc = _describe(event, names)
         frame: Dict[str, Any] = {
             "i": i,
-            # decision frames show the board at decision time (pre-action)
-            "board": i - 1 if is_decision else i,
+            # inline decision frames show the board at decision time
+            "board": i - 1 if is_inline else i,
             "who": who,
             "desc": desc,
             "hora": event["type"] == "hora",
             "eval": None,
             "overlay": "",
         }
-        if is_decision:
-            cands = decode_candidates(meta)
-            taken = _action_index_of(event)
-            kan_choice = event["type"] in ("ankan", "kakan") and cands[0]["idx"] < 37
-            claimed = _claimed_pai(events, i)
-            hand = _seat_hand(events, i - 1, actor)
-            frame["overlay"] = _overlay_svg(cands, hand, i, claimed, kan_choice)
+        if is_inline or reaction is not None:
+            if is_inline:
+                dec_meta = meta
+                # a kan-select evaluation masks tile indices only (which
+                # tile to kan); the decide stage masks actions >= 37
+                kan_choice = (
+                    event["type"] in ("ankan", "kakan")
+                    and not meta["mask_bits"] >> 37
+                )
+                if kan_choice:
+                    pai = event.get("pai") or event["consumed"][0]
+                    taken = mjai_str_to_tile_id(pai) // 4
+                else:
+                    taken = _action_index_of(event)
+                claimed = _claimed_pai(events, i)
+                hand = _seat_hand(events, i - 1, actor)
+                note = f"決策時點 — 事件 #{i} 執行前"
+            else:
+                dec_meta = reaction["meta"]
+                nxt = events[i + 1] if i + 1 < len(events) else None
+                taken = (
+                    _action_index_of(nxt)
+                    if nxt is not None and nxt.get("actor") == actor
+                    else None
+                )
+                if taken is None:
+                    # no action event followed from this seat (e.g. the
+                    # next event is someone's — or its own — tsumo): the
+                    # seat passed on whatever it was offered
+                    taken = 45
+                kan_choice = False
+                claimed = _claimed_pai(events, i + 1)
+                hand = _seat_hand(events, i, actor)
+                note = f"決策時點 — 對事件 #{i} 的反應"
+            cands = decode_candidates(dec_meta)
+            frame["overlay"] = _overlay_svg(cands, hand, note, claimed, kan_choice)
 
             total += 1
             dev = taken is not None and taken != cands[0]["idx"]
@@ -361,9 +448,10 @@ def to_review_html(events: List[Event], actor: Optional[int] = None) -> str:
             frame["eval"] = {
                 "cands": out,
                 "dev": dev,
-                "greedy": meta.get("is_greedy"),
-                "shanten": meta.get("shanten"),
-                "furiten": meta.get("at_furiten"),
+                "resp": reaction is not None,
+                "greedy": dec_meta.get("is_greedy"),
+                "shanten": dec_meta.get("shanten"),
+                "furiten": dec_meta.get("at_furiten"),
             }
         frames.append(frame)
 
@@ -402,9 +490,12 @@ def to_review_html(events: List[Event], actor: Optional[int] = None) -> str:
 
 
 def save_review_html(
-    events: List[Event], filename: str = "review.html", actor: Optional[int] = None
+    events: List[Event],
+    filename: str = "review.html",
+    actor: Optional[int] = None,
+    reactions: Optional[List[Event]] = None,
 ) -> None:
     """Write the interactive review page for ``events`` to ``filename``."""
-    html = to_review_html(events, actor=actor)
+    html = to_review_html(events, actor=actor, reactions=reactions)
     with open(filename, "w", encoding="utf-8") as f:
         f.write(html)

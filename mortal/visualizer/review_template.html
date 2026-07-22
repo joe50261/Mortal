@@ -204,7 +204,9 @@ function render(f) {
       ? `<span class="chip bad">偏離 — 實際≠引擎首選</span>`
       : `<span class="chip ok">一致 ✓</span>`;
     h += `</div>`;
-    h += `<div class="noeval" style="margin-bottom:8px">盤面為決策時點(事件 #${f.i} 執行前);主要數字疊在盤上,下表為明細。</div>`;
+    h += `<div class="noeval" style="margin-bottom:8px">${f.eval.resp
+      ? `對事件 #${f.i} 的反應決策(盤面即決策時點);實際未鳴/未和即為「過」。`
+      : `盤面為決策時點(事件 #${f.i} 執行前);主要數字疊在盤上,下表為明細。`}</div>`;
     h += `<table class="cands"><thead><tr><th>動作 a</th><th class="num">Q̂(s,a)</th><th>π(a|s)</th></tr></thead><tbody>`;
     for (const c of f.eval.cands) {
       const g = c.glyph ? `<span class="tile-glyph${c.aka ? ' aka' : ''}">${c.glyph}</span>` : '';

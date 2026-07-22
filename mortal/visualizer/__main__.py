@@ -89,6 +89,15 @@ def main() -> None:
         "the meta.q_values the engine wrote into the log; SEAT picks the "
         "seat to review (default: the seat with the most evaluations)",
     )
+    parser.add_argument(
+        "--reactions",
+        default=None,
+        metavar="FILE",
+        help="per-event reaction stream written by "
+        "`MORTAL_REVIEW_MODE=1 python mortal.py <seat>`; adds evaluations "
+        "for moments that leave no event in the log (declined calls) and "
+        "enables reviewing logs without inline meta (only with --review)",
+    )
     parser.add_argument("--list", action="store_true", help="list events with indices and exit")
     parser.add_argument("--uni", action="store_true", help="use Unicode tile glyphs in text mode")
     parser.add_argument(
@@ -120,6 +129,9 @@ def main() -> None:
         from .review import save_review_html
 
         actor = None if args.review == -1 else args.review
+        reactions = None
+        if args.reactions is not None:
+            reactions = load_mjai_log(args.reactions)
         out = args.out
         if out is None:
             base = os.path.basename(args.log) if args.log != "-" else "review"
@@ -128,11 +140,13 @@ def main() -> None:
                     base = base[: -len(suffix)]
             out = base + ".review.html"
         try:
-            save_review_html(events, out, actor=actor)
+            save_review_html(events, out, actor=actor, reactions=reactions)
         except ValueError as e:
             sys.exit(f"error: {e}")
         print(f"wrote {out}")
         return
+    if args.reactions is not None:
+        sys.exit("error: --reactions only makes sense together with --review")
 
     if args.all_dir is not None:
         from .svg import save_svg
